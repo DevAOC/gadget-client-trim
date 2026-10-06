@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-06
+
 ### Added
 
 - Initial implementation: CLI to trim unused members from a generated Gadget API client.
@@ -23,3 +25,6 @@ All notable changes to this project are documented here. The format is based on
 - Fail-open (incomplete scans keep everything), fail-safe (unrecognized codegen is skipped), and
   all-or-nothing trimming across ESM/CJS/d.ts.
 - Programmatic API (`analyze`, `computePlan`, `applyPlan`, `discoverModels`, `scanUsage`, …).
+
+[Unreleased]: https://github.com/DevAOC/gadget-client-trim/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/DevAOC/gadget-client-trim/releases/tag/v0.1.0
