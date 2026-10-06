@@ -1,0 +1,47 @@
+{
+  "name": "gadget-client-trim",
+  "version": "0.0.0",
+  "description": "Trim unused models from a generated Gadget API client to shrink your bundle in dev and production.",
+  "keywords": [
+    "gadget",
+    "gadget.dev",
+    "bundle-size",
+    "tree-shaking",
+    "codemod",
+    "cli"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "gadget-client-trim": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.14",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2"
+  }
+}

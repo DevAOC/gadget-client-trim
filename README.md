@@ -59,20 +59,20 @@ is `web/`, `extensions/`, and `shared/`.
 
 ### Options
 
-| Option | Description |
-| --- | --- |
-| `--scan <a,b,c>` | Folders to scan for `api.<member>` usage (default: `web,extensions,shared`). |
-| `--keep <a,b>` | Extra members to always keep. |
-| `--force-trim <a,b>` | Remove these even if used (never overrides `session`/`currentSession`). |
-| `--kinds <a,b>` | Member kinds to trim (default: all): `model,namespace,globalAction,computedView`. |
-| `--no-delete` | Strip references but keep model files on disk. |
-| `--no-prune-types` | Don't edit `Client.d.ts`. |
-| `--config <path>` | Config file (default: `gadget-trim.config.{json,js,mjs}` or `package.json#gadgetTrim`). |
-| `--report` / `--dry-run` | Print the plan, change nothing. |
-| `--check` | CI gate (see recipes). |
-| `--watch` | Re-apply on regeneration. |
-| `--client-dir <path>` | _Advanced._ Override client auto-detection (unusual monorepo layouts). |
-| `--cwd <path>` | _Advanced._ Directory to start searching from. |
+| Option                   | Description                                                                             |
+| ------------------------ | --------------------------------------------------------------------------------------- |
+| `--scan <a,b,c>`         | Folders to scan for `api.<member>` usage (default: `web,extensions,shared`).            |
+| `--keep <a,b>`           | Extra members to always keep.                                                           |
+| `--force-trim <a,b>`     | Remove these even if used (never overrides `session`/`currentSession`).                 |
+| `--kinds <a,b>`          | Member kinds to trim (default: all): `model,namespace,globalAction,computedView`.       |
+| `--no-delete`            | Strip references but keep model files on disk.                                          |
+| `--no-prune-types`       | Don't edit `Client.d.ts`.                                                               |
+| `--config <path>`        | Config file (default: `gadget-trim.config.{json,js,mjs}` or `package.json#gadgetTrim`). |
+| `--report` / `--dry-run` | Print the plan, change nothing.                                                         |
+| `--check`                | CI gate (see recipes).                                                                  |
+| `--watch`                | Re-apply on regeneration.                                                               |
+| `--client-dir <path>`    | _Advanced._ Override client auto-detection (unusual monorepo layouts).                  |
+| `--cwd <path>`           | _Advanced._ Directory to start searching from.                                          |
 
 ### Config file
 
@@ -96,7 +96,7 @@ the client is generated and before your bundler reads it** — never after the b
 
 - **Dev:** run `gadget-client-trim --watch` alongside your dev server. It re-applies after every
   regeneration.
-- **Build / CI:** run `gadget-client-trim` as an explicit step *before* your build. Don't rely on npm's
+- **Build / CI:** run `gadget-client-trim` as an explicit step _before_ your build. Don't rely on npm's
   `prebuild` lifecycle hook — it won't fire for the Shopify CLI or for build pipelines that invoke your
   bundler directly.
 
@@ -115,10 +115,11 @@ These are **examples** — copy what fits. See [`examples/`](./examples) for ful
 {
   "scripts": {
     "dev": "run-p dev:server trim:watch",
-    "trim:watch": "gadget-client-trim --watch"
-  }
+    "trim:watch": "gadget-client-trim --watch",
+  },
 }
 ```
+
 </details>
 
 <details>
@@ -127,6 +128,7 @@ These are **examples** — copy what fits. See [`examples/`](./examples) for ful
 ```sh
 gadget-client-trim && your-build-command
 ```
+
 </details>
 
 <details>
@@ -137,6 +139,7 @@ gadget-client-trim && your-build-command
 gadget-client-trim
 shopify app deploy
 ```
+
 </details>
 
 <details>
@@ -144,9 +147,10 @@ shopify app deploy
 
 ```yaml
 # inside a job that has already generated the client (your ggt step):
-- run: npx gadget-client-trim          # trim
-- run: npx gadget-client-trim --check  # fail the build if not trimmed / shape changed
+- run: npx gadget-client-trim # trim
+- run: npx gadget-client-trim --check # fail the build if not trimmed / shape changed
 ```
+
 </details>
 
 ## Safety
@@ -157,7 +161,7 @@ shopify app deploy
 - **Fail-safe:** the client is matched against a known set of anchor lines per model. If a model's shape
   isn't exactly recognized (e.g. a future Gadget codegen change), that model is **skipped** with a
   warning rather than partially edited. `--check` turns that into a CI failure so you notice.
-- **All-or-nothing:** a model is trimmed only if it can be cleanly removed from *every* target file
+- **All-or-nothing:** a model is trimmed only if it can be cleanly removed from _every_ target file
   (ESM, CJS, and the `.d.ts`), so the outputs never drift out of sync.
 - **`session` / `currentSession` are always kept** (auth), even via `--force-trim`.
 - **Types stay consistent:** only the trimmed managers' fields/imports are pruned from `Client.d.ts`;
@@ -169,8 +173,11 @@ shopify app deploy
 ```ts
 import { analyze, applyPlan } from "gadget-client-trim";
 
-const { plan } = analyze({ clientDir: ".gadget/client", scan: ["web", "extensions"] });
-console.log(plan.trim);   // ["shopifyFile", ...]
+const { plan } = analyze({
+  clientDir: ".gadget/client",
+  scan: ["web", "extensions"],
+});
+console.log(plan.trim); // ["shopifyFile", ...]
 if (process.env.WRITE) applyPlan(plan);
 ```
 
@@ -192,4 +199,3 @@ with a warning (see [Safety](#safety)).
 ## License
 
 MIT
-# gadget-client-trim
