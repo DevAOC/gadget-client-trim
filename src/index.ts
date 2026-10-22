@@ -24,3 +24,6 @@ export type {
 } from "./core.js";
 export { loadConfig, findClient } from "./config.js";
 export type { TrimConfig, ClientLocation } from "./config.js";
+export { resolveTargets, runTargets } from "./targets.js";
+export type { ResolvedTarget, TargetResult, TargetStatus, TrimTarget } from "./targets.js";
+export { hashClient, pristineClient, COPY_STAMP, IN_PLACE_STATE } from "./copy.js";
