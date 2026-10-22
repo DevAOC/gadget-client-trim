@@ -45,3 +45,19 @@ that reproduces the new shape, and verify both old and new shapes pass.
 - Keep changes focused; add or update tests for any behavior change.
 - Run `npm run build && npm test` before opening a PR.
 - Update `CHANGELOG.md` under **Unreleased**.
+
+## Releasing
+
+Releases are cut by CI (`.github/workflows/ci.yml`). Every pull request and push to `main` is built
+and tested on Node 18, 20 and 22. On `main`, once the tests pass, the version in `package.json` is
+published to npm if it is not there yet, then tagged `vX.Y.Z` with a GitHub release made from its
+`CHANGELOG.md` section.
+
+To release, in the pull request: bump `version` in `package.json` (and `package-lock.json`, via
+`npm version <x.y.z> --no-git-tag-version`), and move the **Unreleased** notes under a dated
+`## [x.y.z]` heading with its compare link. Merging it publishes. A merge without a version bump
+publishes nothing.
+
+Publishing uses npm trusted publishing (OIDC): no npm token lives in the repository. It is set up
+once on npmjs.com under the package's **Trusted publisher** settings (GitHub Actions,
+`DevAOC/gadget-client-trim`, workflow `ci.yml`).
