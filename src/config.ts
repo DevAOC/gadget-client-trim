@@ -2,15 +2,21 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { ComputeOptions } from "./core.js";
+import type { TrimTarget } from "./targets.js";
 
-export interface TrimConfig extends ComputeOptions {
+export interface TrimConfig extends TrimTarget {
   /**
-   * Folders to scan for `api.<model>` usage — this is how the tool decides which models/actions to
-   * keep vs. remove. Paths are resolved relative to the detected app root. Default:
-   * `["web", "extensions", "shared"]`.
+   * Several trims of the one generated client, each scanning its own folders: at most one in place,
+   * the rest written as trimmed copies (`out`). Each inherits this config's top-level options. Without
+   * it, this config is the single target. Example — the web app keeps the generated client, POS
+   * extensions import a copy trimmed to what they call:
+   *
+   *   targets: [
+   *     { scan: ["web", "shared"] },
+   *     { out: ".pos-client", scan: ["extensions", "shared"] },
+   *   ]
    */
-  scan?: string[];
+  targets?: TrimTarget[];
 }
 
 const CONFIG_FILES = ["gadget-trim.config.json", "gadget-trim.config.js", "gadget-trim.config.mjs"];

@@ -4,8 +4,15 @@ import { existsSync, readFileSync, watch } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
-import { analyze, applyPlan, type AnalyzeConfig, type MemberKind, type TrimPlan } from "./core.js";
+import type { ComputeOptions, MemberKind, TrimPlan } from "./core.js";
 import { findClient, loadConfig, type TrimConfig } from "./config.js";
+import {
+  displayPath,
+  resolveTargets,
+  runTargets,
+  type ResolvedTarget,
+  type TargetResult,
+} from "./targets.js";
 
 type Mode = "apply" | "check" | "report" | "dry-run" | "watch";
 
@@ -14,6 +21,7 @@ interface CliArgs {
   configPath?: string;
   clientDir?: string;
   scan?: string[];
+  out?: string;
   keep?: string[];
   forceTrim?: string[];
   kinds?: MemberKind[];
@@ -40,6 +48,7 @@ function parseArgs(argv: string[]): CliArgs | { help: true } | { version: true }
       case "--client-dir": args.clientDir = next(); break;
       case "--cwd": args.cwd = next(); break;
       case "--scan": args.scan = list(next()); break;
+      case "--out": args.out = next(); break;
       case "--keep": args.keep = list(next()); break;
       case "--force-trim": args.forceTrim = list(next()); break;
       case "--kinds": args.kinds = list(next()) as MemberKind[]; break;
@@ -67,8 +76,12 @@ The Gadget client is found automatically by walking up from the current director
 node_modules/@gadget-client/*). You only configure which folders to scan for api.<model> usage — that
 is what decides which models/actions are kept vs. removed.
 
+Several frontends can each get their own trim with \`targets\` in the config: one trims the generated
+client in place, the others write trimmed copies (\`out\`) that their frontend imports instead.
+
 Options:
   --scan <a,b,c>        Folders to scan for api.<member> usage (default: web,extensions,shared).
+  --out <dir>           Write a trimmed copy here instead of trimming the client in place.
   --keep <a,b>          Extra members to always keep.
   --force-trim <a,b>    Remove these even if used (never overrides session/currentSession).
   --kinds <a,b>         Member kinds to trim (default: all): model,namespace,globalAction,computedView.
@@ -77,6 +90,9 @@ Options:
   --config <path>       Config file (default: gadget-trim.config.{json,js,mjs} or package.json#gadgetTrim).
   -h, --help            Show this help.
   -v, --version         Show version.
+
+  --scan or --out run that one trim and ignore the config's \`targets\`; the other options apply to
+  every target.
 
 Advanced:
   --client-dir <path>   Override client auto-detection (unusual monorepo layouts).
@@ -95,7 +111,13 @@ function readVersion(): string {
   }
 }
 
-async function buildConfig(args: CliArgs): Promise<AnalyzeConfig | null> {
+interface Setup {
+  clientDir: string;
+  appRoot: string;
+  targets: ResolvedTarget[];
+}
+
+async function buildSetup(args: CliArgs): Promise<Setup | null> {
   // The package locates `.gadget` itself by walking up from the cwd; the user does not configure it.
   // `--client-dir` exists only as an advanced override (e.g. unusual monorepo layouts).
   let clientDir: string;
@@ -119,34 +141,87 @@ async function buildConfig(args: CliArgs): Promise<AnalyzeConfig | null> {
 
   // Config + scan folders are resolved relative to the detected app root.
   const fileConfig: TrimConfig = await loadConfig(appRoot, args.configPath);
-
-  return {
-    clientDir,
-    cwd: appRoot, // scan folders resolve relative to the detected app root
-    scan: args.scan ?? fileConfig.scan,
-    keep: args.keep ?? fileConfig.keep,
-    forceTrim: args.forceTrim ?? fileConfig.forceTrim,
-    kinds: args.kinds ?? fileConfig.kinds,
-    deleteFiles: args.deleteFiles ?? fileConfig.deleteFiles,
-    pruneTypes: args.pruneTypes ?? fileConfig.pruneTypes,
-    alwaysKeep: fileConfig.alwaysKeep,
+  const overrides: ComputeOptions = {
+    keep: args.keep,
+    forceTrim: args.forceTrim,
+    kinds: args.kinds,
+    deleteFiles: args.deleteFiles,
+    pruneTypes: args.pruneTypes,
   };
+  // --scan / --out name one trim on the command line; the config's targets then do not apply.
+  const config: TrimConfig =
+    args.scan || args.out
+      ? { ...fileConfig, targets: undefined, scan: args.scan ?? fileConfig.scan, out: args.out }
+      : fileConfig;
+
+  try {
+    return { clientDir, appRoot, targets: resolveTargets(config, appRoot, clientDir, overrides) };
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
+    return null;
+  }
 }
 
-function printPlan(plan: TrimPlan): void {
+function printPlan(plan: TrimPlan, indent = ""): void {
   const counts = new Map<string, number>();
   for (const d of plan.discovered) counts.set(d.kind, (counts.get(d.kind) ?? 0) + 1);
   const breakdown = [...counts.entries()].map(([k, n]) => `${n} ${k}`).join(", ");
   process.stdout.write(
-    `discovered ${plan.discovered.length} members (${breakdown}) · keep ${plan.keep.length} · trim ${plan.trim.length}\n`,
+    `${indent}discovered ${plan.discovered.length} members (${breakdown}) · keep ${plan.keep.length} · trim ${plan.trim.length}\n`,
   );
-  if (plan.trim.length) process.stdout.write(`  trim:  ${plan.trim.join(", ")}\n`);
-  process.stdout.write(`  keep:  ${plan.keep.join(", ")}\n`);
-  for (const w of plan.warnings) process.stdout.write(`  warn:  ${w}\n`);
+  if (plan.trim.length) process.stdout.write(`${indent}  trim:  ${plan.trim.join(", ")}\n`);
+  process.stdout.write(`${indent}  keep:  ${plan.keep.join(", ")}\n`);
+  for (const w of plan.warnings) process.stdout.write(`${indent}  warn:  ${w}\n`);
 }
 
-function hasShapeWarning(plan: TrimPlan): boolean {
-  return plan.warnings.some((w) => w.includes("unexpected anchor shape"));
+function label(setup: Setup, target: ResolvedTarget): string {
+  const scan = `scan: ${target.scan.join(", ")}`;
+  return target.outDir
+    ? `${target.name} → ${displayPath(setup.appRoot, target.outDir)} (${scan})`
+    : `${target.name} (${scan})`;
+}
+
+/** Print one run's results; returns the exit code. */
+function report(setup: Setup, results: TargetResult[], mode: "apply" | "check" | "report"): number {
+  const many = results.length > 1;
+  let code = 0;
+  for (const r of results) {
+    const indent = many ? "  " : "";
+    if (many) process.stdout.write(`[${label(setup, r.target)}]\n`);
+    printPlan(r.plan, indent);
+    switch (r.status) {
+      case "unrecognized":
+        process.stderr.write(
+          `${indent}${mode === "check" ? "check failed" : "skipped"}: client codegen shape not recognized (see warnings).\n`,
+        );
+        if (mode === "check") code = 1;
+        break;
+      case "lost-members":
+        process.stderr.write(`${indent}error: ${r.detail}\n`);
+        code = 1;
+        break;
+      case "pending":
+        process.stderr.write(`${indent}check failed: ${r.detail} — run the trim before this gate.\n`);
+        code = 1;
+        break;
+      case "clean":
+        process.stdout.write(
+          mode === "check"
+            ? `${indent}check passed: ${r.target.outDir ? "copy" : "client"} is trimmed and shape is recognized.\n`
+            : `${indent}nothing to trim — already clean.\n`,
+        );
+        break;
+      case "trimmed":
+        process.stdout.write(
+          `${indent}${r.target.outDir ? `wrote ${displayPath(setup.appRoot, r.target.outDir)}; ` : "applied: "}` +
+            `edited ${r.filesWritten} file(s), deleted ${r.filesDeleted} file(s).\n`,
+        );
+        break;
+      case "reported":
+        break;
+    }
+  }
+  return code;
 }
 
 async function main(): Promise<number> {
@@ -160,65 +235,34 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const config = await buildConfig(parsed);
-  if (!config) return 2;
+  const setup = await buildSetup(parsed);
+  if (!setup) return 2;
 
-  if (parsed.mode === "watch") {
-    return runWatch(config);
-  }
+  if (parsed.mode === "watch") return runWatch(setup);
 
-  const { plan } = analyze(config);
-
-  if (parsed.mode === "report" || parsed.mode === "dry-run") {
-    printPlan(plan);
-    return 0;
-  }
-
-  if (parsed.mode === "check") {
-    printPlan(plan);
-    const pending = plan.edits.length > 0 || plan.deletions.length > 0;
-    if (hasShapeWarning(plan)) {
-      process.stderr.write("check failed: client codegen shape not recognized (see warnings).\n");
-      return 1;
-    }
-    if (pending) {
-      process.stderr.write(
-        "check failed: client is not trimmed — run the trim before this gate.\n",
-      );
-      return 1;
-    }
-    process.stdout.write("check passed: client is trimmed and shape is recognized.\n");
-    return 0;
-  }
-
-  // apply
-  if (plan.edits.length === 0 && plan.deletions.length === 0) {
-    printPlan(plan);
-    process.stdout.write("nothing to trim — already clean.\n");
-    return 0;
-  }
-  const result = applyPlan(plan);
-  printPlan(plan);
-  process.stdout.write(
-    `applied: edited ${result.filesWritten.length} file(s), deleted ${result.filesDeleted.length} file(s).\n`,
-  );
-  return 0;
+  const mode = parsed.mode === "dry-run" ? "report" : parsed.mode;
+  return report(setup, runTargets(setup.targets, { ...setup, mode }), mode);
 }
 
-function runWatch(config: AnalyzeConfig): number {
-  const esm = join(config.clientDir, "dist-esm", "Client.js");
-  const sync = join(config.clientDir, "..", "sync.json");
+function runWatch(setup: Setup): number {
+  const esm = join(setup.clientDir, "dist-esm", "Client.js");
+  const sync = join(setup.clientDir, "..", "sync.json");
   let timer: NodeJS.Timeout | null = null;
 
   const run = () => {
     try {
-      const { plan } = analyze(config);
-      if (plan.edits.length || plan.deletions.length) {
-        const result = applyPlan(plan);
-        process.stdout.write(
-          `[gadget-client-trim] trimmed ${plan.trim.length} model(s); ` +
-            `edited ${result.filesWritten.length}, deleted ${result.filesDeleted.length}.\n`,
-        );
+      // Copies already cut from this client are left alone, so the trim's own writes settle at once.
+      for (const r of runTargets(setup.targets, { ...setup, mode: "apply" })) {
+        const where = r.target.outDir ? ` → ${displayPath(setup.appRoot, r.target.outDir)}` : "";
+        if (r.status === "trimmed")
+          process.stdout.write(
+            `[gadget-client-trim] ${r.target.name}${where}: trimmed ${r.plan.trim.length} member(s); ` +
+              `edited ${r.filesWritten}, deleted ${r.filesDeleted}.\n`,
+          );
+        else if (r.status === "lost-members" || r.status === "unrecognized")
+          process.stderr.write(
+            `[gadget-client-trim] ${r.target.name}${where}: ${r.detail ?? "client codegen shape not recognized"}\n`,
+          );
       }
     } catch (err) {
       process.stderr.write(`[gadget-client-trim] watch error: ${(err as Error).message}\n`);

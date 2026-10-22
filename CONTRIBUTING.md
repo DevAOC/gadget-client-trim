@@ -17,6 +17,8 @@ The package has **no runtime dependencies** — it uses only Node built-ins. Kee
 - `src/core.ts` — pure logic: model discovery, usage scanning, plan computation, line stripping.
   Functions here are string-in/string-out wherever possible so they're easy to test.
 - `src/config.ts` — config file loading + client-directory resolution.
+- `src/targets.ts` — several trims of one client (`targets`): resolution, ordering, and running them.
+- `src/copy.ts` — trimmed copies: the pristine snapshot, copy stamps, and the in-place trim's record.
 - `src/cli.ts` — argument parsing, the commands, and `--watch`.
 - `test/` — vitest suites driven by synthetic fixtures (deliberately non-Gadget model names to keep
   discovery generic) plus on-disk apply/delete tests.

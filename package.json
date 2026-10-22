@@ -1,6 +1,6 @@
 {
   "name": "gadget-client-trim",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Trim unused models from a generated Gadget API client to shrink your bundle in dev and production.",
   "keywords": [
     "gadget",
